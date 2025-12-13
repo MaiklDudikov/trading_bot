@@ -108,8 +108,94 @@ From the project root: python main.py
 
 The bot will:
 
-Load saved statistics from stats.json (if exists)
+1. Load saved statistics from stats.json (if exists)
 
-Start polling Telegram updates
+2. Start polling Telegram updates
 
-Wait for /start or button interactions
+3. Wait for /start or button interactions
+
+🤖 Bot Commands & Buttons
+Commands
+
+/start — show main menu and strategy description
+
+/stop — stop all running strategies (UP and DOWN)
+
+/stats — show trading statistics (total trades, win rate, PnL, UP/DOWN breakdown)
+
+/down —  information about what is happening in DOWN mode
+
+Reply Keyboard Buttons
+
+📊 Активный ордер — show current active limit SELL order on STRK (if any)
+
+📈 цена STRK — show current last price
+
+💰 баланс STRK — show STRK balance
+
+💲 баланс USDT — show USDT balance
+
+💷 Купить STRK — start UP strategy: buy STRK and place TP
+
+💸 Продать STRK — sell all STRK at market manually
+
+Inline Buttons
+
+Under /stats message:
+
+🧹 Очистить статистику — clear all stats (in memory and in stats.json)
+
+Under active order message:
+
+❌ Отменить лимитный ордер — cancel current active SELL limit on STRK
+
+🔄 UP → DOWN → UP Logic (High-Level)
+
+1. You press “💷 Купить STRK”
+
+2. Bot:
+
+Buys STRK with all available USDT (market)
+
+Gets avgPrice from Bybit
+
+Places SELL limit at avgPrice + 0.0030
+
+Starts UP cycle loop
+
+3. While TP-limit exists:
+
+Bot monitors price
+
+If price drops by more than DRAWDOWN_TRIGGER →
+cancel TP, sell STRK, enter DOWN
+
+4. In DOWN mode:
+
+Split USDT on balance into DOWN_LEVELS
+
+For each level (price falls by DOWN_STEP):
+
+Buy STRK for 1 level of USDT
+
+Place TP at avg + DOWN_TP_STEP
+
+Once all DOWN TP orders are filled:
+
+Exit DOWN
+
+Auto-restart UP if enabled
+
+5. At any time you can /stop to terminate all loops safely.
+
+🧱 Future Plans
+
+Advanced risk management (dynamic levels instead of fixed 5)
+
+Multiple symbols support (not only STRKUSDT)
+
+Daily/weekly report summary via Telegram
+
+Docker image for easy deployment
+
+Backtesting tools and visualization

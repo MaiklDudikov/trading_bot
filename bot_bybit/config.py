@@ -23,9 +23,10 @@ SYMBOL = "STRKUSDT"
 DRAWDOWN_TRIGGER = 0.0050
 
 # Настройки DOWN-стратегии
-DOWN_LEVELS = 5          # Сколько уровней откупа
+DOWN_LEVELS_BASE = 5          # базовое деление депозита_BASE
 DOWN_STEP = 0.0050       # Шаг падения на каждом уровне 0.0090
 DOWN_TP_STEP = 0.0050    # TP для каждого уровня
+MAX_DOWN_LEVELS = 10        # максимум уровней в сетке
 
 # --- Авто-возврат в UP после DOWN ---
 AUTORESTART_UP = True

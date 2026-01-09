@@ -9,7 +9,7 @@ from strategy import state as st
 from strategy.up_cycle import strategy_cycle
 from strategy.down_cycle import reset_down_vars
 from strategy.stats_storage import save_stats_to_file, reset_stats
-from config import DOWN_LEVELS
+from config import DOWN_LEVELS_BASE
 from bybit_api.price_cache import get_price_cached
 
 
@@ -181,7 +181,7 @@ async def cmd_down(message: types.Message):
     # ------------------------------
     # РАСЧЁТ ВСЕХ УРОВНЕЙ 1–N
     # ------------------------------
-    for lvl in range(1, DOWN_LEVELS + 1):
+    for lvl in range(1, DOWN_LEVELS_BASE + 1):
 
         # --- 1 уровень фиксированный ---
         if lvl == 1:
@@ -221,7 +221,7 @@ async def cmd_down(message: types.Message):
         f"Текущая цена : *{current_price}*\n\n"
         "Уровни :\n" +
         "\n".join(levels_text) +
-        f"\n\nОткупов выполнено : *{st.down_levels_completed}/{DOWN_LEVELS}*\n"
+        f"\n\nОткупов выполнено : *{st.down_levels_completed}/{DOWN_LEVELS_BASE}*\n"
         f"Ордера TP выставлены : *{len(st.down_sell_orders)}*"
     )
 

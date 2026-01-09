@@ -11,8 +11,9 @@ down_active: bool = False
 down_base_price: float | None = None
 down_usdt_total: float | None = None
 down_usdt_per_level: float | None = None
-down_levels_completed: int = 0
-down_sell_orders: list[str] = []
+down_levels_completed: int = 0  # сколько уровней ОТКУПЛЕНО
+down_open_levels: int = 0             # сколько уровней СЕЙЧАС В РАБОТЕ
+down_sell_orders: list[str] = []  # TP-ордера
 
 # === SIMPLE STATISTICS ===
 total_trades: int = 0          # всего завершённых сделок
@@ -23,6 +24,7 @@ total_pnl: float = 0.0         # суммарный PnL
 # сохраняем цену покупки DOWN-уровней, чтобы считать PnL
 down_level_entries: list[tuple[float, float]] = []
 # (entry_price, qty)
+down_tp_map: dict = {}
 
 # уменьшенные API запросы
 last_price_cache = None

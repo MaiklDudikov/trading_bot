@@ -80,7 +80,7 @@ async def enter_down_mode(chat_id: int, last_price: float, bot: Bot):
     st.down_tp_map = {}
 
     # для отображения — первый уровень -0.0060
-    first_level = round(st.down_base_price - 0.0060, 4)
+    first_level = round(st.down_base_price - 0.0006, 4)
 
     await bot.send_message(
         chat_id,
@@ -131,7 +131,7 @@ async def down_mode_cycle(chat_id: int, bot: Bot):
             continue
 
         if st.down_levels_completed == 0:
-            target_price = base - 0.0060
+            target_price = base - 0.0006
         else:
             target_price = base * (1 - hybrid_step * (next_level + extra))
 

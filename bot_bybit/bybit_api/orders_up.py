@@ -96,7 +96,7 @@ def buy_strk() -> str:
         )
 
     # 5) Цена лимитного ордера (+0.0030)
-    sell_price = round(avg_price + 0.0030, 4)
+    sell_price = round(avg_price + 0.0003, 4)
 
     # 6) Размещаем лимитный ордер
     try:
@@ -115,8 +115,8 @@ def buy_strk() -> str:
 
     print("sell limit order:", sell_order)
 
-    # Информативный текст для Telegram
-    down_trigger_price = round(avg_price - 0.0050, 4)
+    # Информативный текст для Telegram 0.0050
+    down_trigger_price = round(avg_price - 0.0005, 4)
 
     return (
         f"✅ Куплено STRK на сумму *{usdt_int}* USDT по цене *{avg_price}* за шт, "
@@ -221,4 +221,3 @@ def sell_strk() -> str:
         f"✅ Продано STRK : *{strk}*\n"
         f"PnL невозможно рассчитать (данные Bybit не пришли)"
     )
-

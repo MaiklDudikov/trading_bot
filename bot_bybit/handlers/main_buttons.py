@@ -183,9 +183,9 @@ async def cmd_down(message: types.Message):
     # ------------------------------
     for lvl in range(1, DOWN_LEVELS_BASE + 1):
 
-        # --- 1 уровень фиксированный ---
+        # --- 1 уровень фиксированный 0.0060 ---
         if lvl == 1:
-            level_price = round(base - 0.0060, 4)
+            level_price = round(base - 0.0006, 4)
 
         else:
             # оцениваем drawdown (как в down_cycle)

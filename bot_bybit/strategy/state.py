@@ -26,6 +26,11 @@ down_level_entries: list[tuple[float, float]] = []
 # (entry_price, qty)
 down_tp_map: dict = {}
 
+# === REBOUND STRATEGY ===
+rebound_active: bool = False
+rebound_last_sell_price: float | None = None
+rebound_last_tp_order_id: str | None = None
+
 # уменьшенные API запросы
 last_price_cache = None
 last_price_time = 0

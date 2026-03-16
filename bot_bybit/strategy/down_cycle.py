@@ -1,14 +1,14 @@
 import asyncio
 import time
-import numpy as np
+# import numpy as np
 from aiogram import Bot
 
-from bybit_api.detector import get_price
+# from bybit_api.detector import get_price
 from bybit_api.balances import balance_usdt
 from bybit_api.client import client
 from bybit_api.price_cache import get_price_cached
 
-from config import SYMBOL, DOWN_LEVELS_BASE
+from config import SYMBOL, DOWN_LEVELS_BASE, DOWN_FIRST_LEVEL
 from strategy import state as st
 from strategy.trade_stats import register_trade
 
@@ -16,29 +16,74 @@ from strategy.trade_stats import register_trade
 # ===================== ATR CALCULATION =====================
 def calc_atr_percent() -> float:
     """
-    Реальная ATR-адаптация:
-    Берём последние ~50 цен, считаем средний TR и нормализуем.
+    ATR по минутным свечам Bybit.
+    Возвращает ATR в долях от цены:
+    0.005 = 0.5%
     """
-    prices: list[float] = []
-
     try:
-        for _ in range(50):
-            prices.append(get_price())
+        data = client.get_kline(
+            category="spot",
+            symbol=SYMBOL,
+            interval="1",   # 1-минутные свечи
+            limit=20
+        )
     except Exception as e:
-        print("ATR calc error:", e)
-        return 0.02  # fallback: 2%
-
-    if len(prices) < 3:
+        print("ATR get_kline error:", e)
         return 0.02
 
-    tr = [abs(prices[i] - prices[i - 1]) for i in range(1, len(prices))]
-    atr = float(np.mean(tr))
-    last = prices[-1]
-
-    if last <= 0:
+    candles = data.get("result", {}).get("list", [])
+    if not candles or len(candles) < 2:
         return 0.02
 
-    return max(0.005, min(atr / last, 0.05))   # 0.5%–5%
+    # Bybit часто отдаёт свечи от новых к старым → разворачиваем
+    candles = candles[::-1]
+
+    highs = []
+    lows = []
+    closes = []
+
+    for c in candles:
+        try:
+            high = float(c[2])
+            low = float(c[3])
+            close = float(c[4])
+        except (ValueError, TypeError, IndexError):
+            continue
+
+        highs.append(high)
+        lows.append(low)
+        closes.append(close)
+
+    if len(closes) < 2:
+        return 0.02
+
+    tr_values = []
+
+    for i in range(1, len(closes)):
+        high = highs[i]
+        low = lows[i]
+        prev_close = closes[i - 1]
+
+        tr = max(
+            high - low,
+            abs(high - prev_close),
+            abs(low - prev_close)
+        )
+        tr_values.append(tr)
+
+    if not tr_values:
+        return 0.02
+
+    atr = sum(tr_values) / len(tr_values)
+    last_close = closes[-1]
+
+    if last_close <= 0:
+        return 0.02
+
+    atr_percent = atr / last_close
+
+    # Ограничение, чтобы сетка не сходила с ума
+    return max(0.003, min(atr_percent, 0.03))
 
 
 # ===================== RESET DOWN VARS =====================
@@ -79,8 +124,8 @@ async def enter_down_mode(chat_id: int, last_price: float, bot: Bot):
     st.down_sell_orders = []
     st.down_tp_map = {}
 
-    # для отображения — первый уровень -0.0060
-    first_level = round(st.down_base_price - 0.0006, 4)
+    # для отображения — первый уровень (0.0060 заменил на DOWN_FIRST_LEVEL)
+    first_level = round(st.down_base_price - DOWN_FIRST_LEVEL, 4)
 
     await bot.send_message(
         chat_id,
@@ -130,8 +175,9 @@ async def down_mode_cycle(chat_id: int, bot: Bot):
         if next_level > max_levels:
             continue
 
+        # 0.0006 заменил на DOWN_FIRST_LEVEL
         if st.down_levels_completed == 0:
-            target_price = base - 0.0006
+            target_price = base - DOWN_FIRST_LEVEL
         else:
             target_price = base * (1 - hybrid_step * (next_level + extra))
 

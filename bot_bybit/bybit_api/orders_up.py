@@ -2,7 +2,7 @@ import time
 from pybit import exceptions
 from .client import client
 from .balances import balance_strk, balance_usdt
-from config import SYMBOL
+from config import SYMBOL, TP_STEP, DRAWDOWN_TRIGGER
 from strategy import state as st
 from strategy.trade_stats import register_trade   # ← НОВОЕ
 
@@ -95,8 +95,8 @@ def buy_strk() -> str:
             f"Всего : {qty_base}, комиссия : {fee_strk}"
         )
 
-    # 5) Цена лимитного ордера (+0.0030)
-    sell_price = round(avg_price + 0.0003, 4)
+    # 5) Цена лимитного ордера (+0.0030 заменил на TP_STEP)
+    sell_price = round(avg_price + TP_STEP, 4)
 
     # 6) Размещаем лимитный ордер
     try:
@@ -115,8 +115,8 @@ def buy_strk() -> str:
 
     print("sell limit order:", sell_order)
 
-    # Информативный текст для Telegram 0.0050
-    down_trigger_price = round(avg_price - 0.0005, 4)
+    # Информативный текст для Telegram (0.0050 заменил на DRAWDOWN_TRIGGER)
+    down_trigger_price = round(avg_price - DRAWDOWN_TRIGGER, 4)
 
     return (
         f"✅ Куплено STRK на сумму *{usdt_int}* USDT по цене *{avg_price}* за шт, "

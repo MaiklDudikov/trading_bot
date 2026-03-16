@@ -20,7 +20,13 @@ if not BOT_TOKEN:
 SYMBOL = "STRKUSDT"
 
 # Порог разворота вниз от avg_price (например, 0.0050)
+TP_STEP = 0.0003
 DRAWDOWN_TRIGGER = 0.0005
+DOWN_FIRST_LEVEL = 0.0006
+
+# Настройки Market BUY стратегии, команда /rebound
+REBOUND_TP_PCT = 0.25        # +25%
+REBOUND_BUYBACK_PCT = 0.12   # -12%
 
 # Настройки DOWN-стратегии
 DOWN_LEVELS_BASE = 5          # базовое деление депозита_BASE

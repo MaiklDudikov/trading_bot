@@ -7,10 +7,13 @@ from bybit_api.balances import balance_strk, balance_usdt
 from bybit_api.orders_up import buy_strk, sell_strk
 from strategy import state as st
 from strategy.up_cycle import strategy_cycle
-from strategy.down_cycle import reset_down_vars
+from strategy.down_cycle import reset_down_vars, calc_atr_percent
 from strategy.stats_storage import save_stats_to_file, reset_stats
-from config import DOWN_LEVELS_BASE
+from config import DOWN_LEVELS_BASE, DOWN_FIRST_LEVEL
+import config
+from strategy.params_storage import save_params_to_file
 from bybit_api.price_cache import get_price_cached
+from strategy.rebound_cycle import rebound_cycle, market_buy_all_usdt_with_tp
 
 
 router = Router()
@@ -28,13 +31,16 @@ async def cmd_start(message: types.Message):
     )
 
 
-# КОМАНДА STOP: Полный стоп UP + DOWN
+# КОМАНДА STOP: Полный стоп UP + DOWN + REBOUND
 @router.message(Command("stop"))
 async def cmd_stop(message: types.Message):
     st.strategy_running = False
     if st.strategy_task:
         st.strategy_task.cancel()
         st.strategy_task = None
+        st.rebound_active = False
+        st.rebound_last_sell_price = None
+        st.rebound_last_tp_order_id = None
 
     # Останавливаем DOWN
     if st.down_active:
@@ -43,6 +49,45 @@ async def cmd_stop(message: types.Message):
         st.trade_mode = "UP"
 
     await message.answer("⏹ Все стратегии остановлены.")
+
+
+@router.message(Command("help"))
+async def cmd_help(message: types.Message):
+    text = (
+        "📘 *Справка по командам бота*\n\n"
+
+        "*Основные команды:*\n"
+        "/start — запуск бота и главное меню\n"
+        "/help — показать эту справку\n"
+        "/stop — остановить все стратегии\n"
+        "/stats — показать статистику торговли\n"
+        "/down — показать состояние DOWN-режима\n"
+        "/params — показать текущие параметры стратегии\n\n"
+
+        "*Изменение параметров стратегии:*\n"
+        "/set tp 0.0003 — изменить шаг TP в BUY → TP\n"
+        "/set reversal 0.0005 — изменить точку разворота вниз\n"
+        "/set down1 0.0006 — изменить первый уровень DOWN\n\n"
+
+        "*Кнопки в меню:*\n"
+        "💷 Купить STRK — купить STRK на весь USDT и запустить UP-стратегию\n"
+        "💸 Продать STRK — продать весь STRK по рынку\n"
+        "📈 цена STRK — показать текущую цену STRK\n"
+        "💰 баланс STRK — показать баланс STRK\n"
+        "💲 баланс USDT — показать баланс USDT\n"
+        "📊 Активный ордер — показать текущий лимитный ордер\n"
+        "Отменить лимитный ордер — отменить активную лимитку\n\n"
+
+        "*Логика стратегий:*\n"
+        "UP-режим: BUY → TP → BUY → TP по кругу\n"
+        "При падении цены ниже точки разворота включается DOWN-режим\n"
+        "DOWN-режим: откуп уровней по сетке с TP и возвратом в UP\n\n"
+
+        "*Важно:*\n"
+        "Все изменения параметров через /set сохраняются и применяются сразу."
+    )
+
+    await message.answer(text, parse_mode="Markdown")
 
 
 # 📈 Цена STRK
@@ -165,64 +210,163 @@ async def cmd_down(message: types.Message):
         return
 
     base = st.down_base_price
-    current_price = get_price_cached()
 
-    # ------------------------------
-    # ATR для отображения
-    # ------------------------------
-    from strategy.down_cycle import calc_atr_percent
+    try:
+        current_price = get_price_cached()
+    except Exception:
+        current_price = base
+
+    # ATR и hybrid step
     atr_percent = calc_atr_percent()
+    grid_step = 0.03
+    hybrid_step = grid_step + atr_percent
 
-    grid_step = 0.03                      # базовый шаг 3%
-    hybrid_step = grid_step + atr_percent  # итоговый гибридный шаг
+    # drawdown как в down_cycle.py
+    if base > 0:
+        drawdown = (base - current_price) / base
+    else:
+        drawdown = 0.0
+
+    extra = 0
+    if drawdown > 0.20:
+        extra += 1
+    if drawdown > 0.35:
+        extra += 1
+    if drawdown > 0.50:
+        extra += 1
+
+    # сколько уровней в теории можем открыть по текущему размеру уровня
+    if st.down_usdt_total and st.down_usdt_per_level and st.down_usdt_per_level > 0:
+        max_levels = int(st.down_usdt_total // st.down_usdt_per_level)
+    else:
+        max_levels = DOWN_LEVELS_BASE
+
+    # для красивого вывода покажем хотя бы 10 уровней,
+    # но не меньше базовых 5 и не больше теоретически доступных
+    levels_to_show = max(DOWN_LEVELS_BASE, min(max_levels, 10))
 
     levels_text = []
 
-    # ------------------------------
-    # РАСЧЁТ ВСЕХ УРОВНЕЙ 1–N
-    # ------------------------------
-    for lvl in range(1, DOWN_LEVELS_BASE + 1):
+    for lvl in range(1, levels_to_show + 1):
 
-        # --- 1 уровень фиксированный 0.0060 ---
         if lvl == 1:
-            level_price = round(base - 0.0006, 4)
-
+            level_price = round(base - DOWN_FIRST_LEVEL, 4)
         else:
-            # оцениваем drawdown (как в down_cycle)
-            try:
-                price_now = get_price_cached()
-            except:
-                price_now = current_price
-
-            if base > 0:
-                drawdown = (base - price_now) / base
-            else:
-                drawdown = 0
-
-            extra = 0
-            if drawdown > 0.20:
-                extra += 1
-            if drawdown > 0.35:
-                extra += 1
-            if drawdown > 0.50:
-                extra += 1
-
             effective_level = lvl + extra
             level_price = round(base * (1 - hybrid_step * effective_level), 4)
 
-        levels_text.append(f"{lvl} уровень : ~*{level_price}*")
+        marker = ""
+        if lvl <= st.down_levels_completed:
+            marker = " ✅"
 
-    # ------------------------------
-    # Формируем ответ
-    # ------------------------------
+        levels_text.append(f"{lvl} уровень : ~*{level_price}*{marker}")
+
     text = (
         "*DOWN-режим активен* ✅\n\n"
-        f"Базовая цена : *{base}*\n"
-        f"Текущая цена : *{current_price}*\n\n"
-        "Уровни :\n" +
-        "\n".join(levels_text) +
-        f"\n\nОткупов выполнено : *{st.down_levels_completed}/{DOWN_LEVELS_BASE}*\n"
-        f"Ордера TP выставлены : *{len(st.down_sell_orders)}*"
+        f"Базовая цена : *{round(base, 4)}*\n"
+        f"Текущая цена : *{round(current_price, 4)}*\n"
+        f"Drawdown : *{round(drawdown * 100, 2)} %*\n\n"
+        f"ATR : *{round(atr_percent * 100, 2)} %*\n"
+        f"Hybrid step : *{round(hybrid_step * 100, 2)} %*\n"
+        f"Первый уровень : *-{DOWN_FIRST_LEVEL}*\n"
+        f"Размер уровня : *{st.down_usdt_per_level} USDT*\n"
+        f"Макс. уровней по депозиту : *{max_levels}*\n\n"
+        "Уровни :\n"
+        + "\n".join(levels_text)
+        + f"\n\nОткупов выполнено : *{st.down_levels_completed}*"
+        + f"\nОрдера TP выставлены : *{len(st.down_sell_orders)}*"
     )
 
     await message.answer(text, parse_mode="Markdown")
+
+
+# /params
+# /set tp 0.0030
+# /set reversal 0.0050
+# /set down1 0.0060
+@router.message(Command("params"))
+async def cmd_params(message: types.Message):
+    text = (
+        "⚙ *Текущие параметры стратегии*\n\n"
+        f"TP STEP : *{config.TP_STEP}*\n"
+        f"REVERSAL : *{config.DRAWDOWN_TRIGGER}*\n"
+        f"DOWN FIRST LEVEL : *{config.DOWN_FIRST_LEVEL}*"
+    )
+    await message.answer(text, parse_mode="Markdown")
+
+
+@router.message(Command("set"))
+async def cmd_set_param(message: types.Message):
+    parts = message.text.split()
+
+    if len(parts) != 3:
+        await message.answer(
+            "Использование:\n"
+            "/set tp 0.0003\n"
+            "/set reversal 0.0005\n"
+            "/set down1 0.0006"
+        )
+        return
+
+    param = parts[1].lower()
+
+    try:
+        value = float(parts[2])
+    except ValueError:
+        await message.answer("❌ Значение должно быть числом")
+        return
+
+    if value <= 0:
+        await message.answer("❌ Значение должно быть больше нуля")
+        return
+
+    if param == "tp":
+        config.TP_STEP = value
+        save_params_to_file()
+        await message.answer(f"✅ TP STEP обновлён: *{config.TP_STEP}*", parse_mode="Markdown")
+
+    elif param == "reversal":
+        config.DRAWDOWN_TRIGGER = value
+        save_params_to_file()
+        await message.answer(
+            f"✅ Точка разворота обновлена: *{config.DRAWDOWN_TRIGGER}*",
+            parse_mode="Markdown"
+        )
+
+    elif param == "down1":
+        config.DOWN_FIRST_LEVEL = value
+        save_params_to_file()
+        await message.answer(
+            f"✅ Первый уровень DOWN обновлён: *{config.DOWN_FIRST_LEVEL}*",
+            parse_mode="Markdown"
+        )
+
+    else:
+        await message.answer(
+            "❌ Неизвестный параметр.\n"
+            "Доступно:\n"
+            "tp\n"
+            "reversal\n"
+            "down1"
+        )
+
+
+@router.message(Command("rebound"))
+async def cmd_rebound(message: types.Message):
+    if st.down_active:
+        await message.answer("⚠ Сначала останови DOWN-режим командой /stop")
+        return
+
+    if st.strategy_running:
+        await message.answer("⚠ Какая-то стратегия уже запущена. Останови её через /stop")
+        return
+
+    first_msg = market_buy_all_usdt_with_tp()
+    await message.answer(first_msg, parse_mode="Markdown")
+
+    if "REBOUND BUY выполнен" in first_msg:
+        st.strategy_running = True
+        st.rebound_active = True
+        st.strategy_task = asyncio.create_task(
+            rebound_cycle(message.chat.id, message.bot)
+        )

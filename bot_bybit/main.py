@@ -8,6 +8,7 @@ from handlers.main_buttons import router as buttons_router
 from handlers.cancel_order import router as cancel_router
 from strategy.stats_storage import load_stats_from_file
 from middleware.auth import AllowOnlyWhitelistMiddleware
+from strategy.params_storage import load_params_from_file
 
 
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="Markdown"))
@@ -28,6 +29,8 @@ async def main():
 
     # загружаем статистику до старта поллинга
     load_stats_from_file()
+    # загружаем параметры TP, FIRST_LEVEL, DRAWDOWN_TRIGGER до старта поллинга
+    load_params_from_file()
 
     # Стартуем
     await dp.start_polling(bot)
